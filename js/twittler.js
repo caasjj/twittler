@@ -1,182 +1,231 @@
-/* twittler.js
- ** This file handles fetching and delivering tweets based on a user's
- ** account criteria.
- */
-var twittler = function ( user ) {
+function TwittlerApp () {
 
-	var pollInterval = 2000, pollTimerRef, followedUsers = [];
+	var twittler, tweetTemplate, usersTemplate, msgTemplate, signedIn = false;
 
-	/* Internal Initialization and control */
-	function init () {
-		streams.users[user] = [];
-		followedUsers.push( user );
-		start();
+	this.start = (function () {
+		return function () {
+			tweetTemplate = Handlebars.compile( $( '.tweet-template' ).html() );
+			usersTemplate = Handlebars.compile( $( '.users-template' ).html() );
+			msgTemplate = Handlebars.compile( $( '.message-template' ).html() );
+			twittler = new Twittler();
+			_.bind( displayTweets, this );
+			_.bind( displayUsers, this );
+			displayTweets( [] );
+			displayUsers();
+			twittler.start( displayTweets );
+		}
+	})();
+
+	this.follow = function ( username ) {
+		return twittler.follow( username );
 	}
 
-	function start () {
-		pollTimerRef = setInterval( pollTweets, pollInterval );
+	this.unFollow = function ( username ) {
+		return twittler.unFollow( username );
 	}
 
-	function stop () {
-		clearInterval( pollTimerRef );
+	this.tweet = function ( message ) {
+		twittler.tweet( message );
 	}
 
-	/* Private Utility Functions to data_generator */
-	function pollTweets () {
-		dispatchFollowedTweets( streams.home );
+	this.stop = function () {
+		twittler.stop();
 	}
 
-	function dispatchFollowedTweets ( tweets ) {
-
-		var followedTweets = _.filter( tweets, function ( tweet ) {
-			return followedUsers.indexOf( tweet.user ) > -1;
-		} );
-		var displayedTweets = _.map( followedTweets, function ( tweet ) {
-			tweet.pretty_date = makePrettyDate( tweet.created_at );
-			return tweet;
-		} );
-
-		_.forEach( displayedTweets, function ( tweet ) {
-			console.log( '[' + tweet.pretty_date + '] by @' + tweet.user + ': ' + tweet.message );
-		} )
+	this.setUser = function ( username ) {
+		twittler.setUser( username );
+		signedIn = true;
 	}
 
-	function makePrettyDate ( date ) {
-		var diffInSeconds = Math.floor( ( Date.now() - Date.parse( date ) ) / 1000 ), dateArray = [
-		], diffInMins, diffInHrs;
+	function displayTweets ( tweets ) {
+		$( '.tweet-template' ).html( tweetTemplate( tweets.reverse() ) );
+		displayUsers();
+	}
 
-		if ( diffInSeconds % 60 === diffInSeconds ) {
-			return diffInSeconds + ' seconds ago...'
-		} else {
-			if ( diffInSeconds % 3600 === diffInSeconds ) {
-				diffInMins = Math.floor( diffInSeconds / 60 );
-				diffInSeconds = diffInSeconds % 60;
-				dateArray.push( diffInMins + ' minute' + (diffInMins > 1 ? 's' : '') );
-				dateArray.push(
-					diffInSeconds > 0 ? (diffInSeconds + ' second' + (diffInSeconds > 1 ? 's ago...' : ' ago...')) :
-					' ago...' );
-				return dateArray.join( ' ' );
+	function displayUsers () {
+		$( '.users-template' ).html( usersTemplate( twittler.getUsers() ) );
+		var numFollowed = _.filter( twittler.getFollowedUsers(),function ( user ) {
+			return user !== window.visitor;
+		} ).length;
+		$( '.message-template' ).html( msgTemplate( {
+			                                            text:'You are following ' + numFollowed + ' user' +
+			                                                 ((numFollowed > 1) ? 's' : '') } ) );
+	}
+
+	/*** Twittler ***/
+	function Twittler () {
+		var pollInterval = 1000, pollingTimer, followedUsers = [], tweetCallback = [];
+
+		/*** Internal functions and interface to data_generator ***/
+		function makePrettyDate ( date ) {
+			var diffInSeconds = Math.floor( ( Date.now() - Date.parse( date ) ) / 1000 ), dateArray = [
+			], diffInMins, diffInHrs;
+
+			if ( diffInSeconds % 60 === diffInSeconds ) {
+				//return diffInSeconds + ' second' + ((diffInSeconds > 1)? 's' : '') + ' ago...';
+				return 'seconds ago...';
 			} else {
-				if ( diffInSeconds % (3600 * 24) === diffInSeconds ) {
-					diffInHrs = Math.floor( diffInSeconds / 3600 );
-					diffInMins = Math.floor( (diffInSeconds - 3600 * diffInHrs) / 60 );
-					dateArray.push( diffInHrs + ' hour' + (diffInHrs > 1 ? 's' : '') );
-					dateArray.push(
-						diffInMins > 0 ? (diffInMins + ' minute' + (diffInMins > 1 ? 's ago...' : ' ago...')) :
-						'ago...' );
+				if ( diffInSeconds % 3600 === diffInSeconds ) {
+					diffInMins = Math.floor( diffInSeconds / 60 );
+					//diffInSeconds = diffInSeconds % 60;
+					dateArray.push( diffInMins + ' min' + (diffInMins > 1 ? 's' : '') + ' ago...' );
+					//dateArray.push(
+					//	diffInSeconds > 0 ? (diffInSeconds + ' second' + (diffInSeconds > 1 ? 's ago...' : ' ago...')) :
+					//	' ago...' );
 					return dateArray.join( ' ' );
+				} else {
+					if ( diffInSeconds % (3600 * 24) === diffInSeconds ) {
+						diffInHrs = Math.floor( diffInSeconds / 3600 );
+						diffInMins = Math.floor( (diffInSeconds - 3600 * diffInHrs) / 60 );
+						dateArray.push( diffInHrs + ' hour' + (diffInHrs > 1 ? 's' : '') );
+						dateArray.push(
+							diffInMins > 0 ? (diffInMins + ' min' + (diffInMins > 1 ? 's ago...' : ' ago...')) :
+							'ago...' );
+						return dateArray.join( ' ' );
+					}
 				}
 			}
+			return 'More than a day ago...';
 		}
-		return 'More than a day ago...';
-	}
 
-	/* Public API Functions */
-	function follow ( name ) {
-		if ( followedUsers.indexOf( name ) === -1 ) {
-			followedUsers.push( name );
+		/*** Twittler API  ***/
+		function start ( callback ) {
+			tweetCallback.push( callback );
+			pollingTimer = setInterval( getTweets, pollInterval );
 		}
-	}
 
-	function unFollow ( name ) {
-		if ( followedUsers.indexOf( name ) > -1 ) {
-			followedUsers.splice( followedUsers.indexOf( name ), 1 );
+		function setUser ( username ) {
+
+			if ( window.visitor && window.visitor === username ) {
+				return
+			}
+			//if ( window.visitor ) {
+			window.users = Object.keys( streams.users );
+			if ( window.users.indexOf( username ) > -1 ) {
+				window.users.splice( window.users.indexOf( username ), 1 );
+				unFollow( window.visitor );
+			}
+			//}
+			window.visitor = username;
+			streams.users[username] = [];
+			follow( username );
+
 		}
-	}
 
-	function tweet ( msg ) {
-		writeTweet( msg );
-	}
+		function stop () {
+			clearInterval( pollingTimer );
+		}
 
-	/* Perform Initializations */
-	init();
-
-	return {
-		follow  :follow,
-		unFollow:unFollow,
-		tweet   :tweet,
-		start   :start,
-		stop    :stop
-	}
-};
-
-/* Client.js
- ** This file handles user account management, login, logout, etc.
- */
-Client = function ( username, password ) {
-
-	function saveCredentials ( username, password ) {
-		window.localStorage.username = username;
-		window.localStorage.password = password;
-		return username;
-	}
-
-	function createAcct ( username, password ) {
-		if ( window.localStorage.username ) {
-			console.log( 'Existing account. Sign in.' );
-			return username;
-		} else {
-			try {
-				return saveCredentials( username, password )
-			} catch ( e ) {
-				alert( 'Cannot create account.  Error: ' + e );
+		function follow ( name ) {
+			var idx = followedUsers.indexOf( name )
+			if ( idx === -1 ) {
+				followedUsers.push( name );
 			}
 		}
-	}
 
-	function checkCredentials ( username, password ) {
-		if ( password === undefined ) {
-			return window.localStorage.username;
-		} else {
-			return username === window.localStorage.username && password === window.localStorage.password;
+		function unFollow ( name ) {
+			var idx = followedUsers.indexOf( name )
+			if ( idx === -1 ) {
+				return
+			}
+			followedUsers.splice( idx, 1 );
+
 		}
-	}
 
-	function isSignedIn () {
-		return (typeof visitor !== 'undefined') && visitor === this.username;
-	}
-
-	function signIn ( password ) {
-		if ( checkCredentials( this.username, password ) ) {
-			visitor = this.username;
-		} else {
-			alert( 'Invalid username / password' );
+		function getUsers () {
+			return _.map( window.users, function ( user ) {
+				return {
+					user      :user,
+					isFollowed:followedUsers.indexOf( user ) > -1 ? true : false
+				}
+			} );
 		}
+
+		function getFollowedUsers () {
+			return followedUsers;
+		}
+
+		function getTweets () {
+			var tweets = streams.home;
+			var displayedTweets = _.chain( _.filter( tweets, function ( tweet ) {
+					return (followedUsers.indexOf( tweet.user ) > -1 );
+				} ) ).map(function ( tweet ) {
+					          tweet.pretty_date = makePrettyDate( tweet.created_at );
+					          return tweet;
+				          } ).value();
+
+			/*			_.forEach( displayedTweets, function ( tweet ) {
+			 console.log( '[' + tweet.pretty_date + '] by @' + tweet.user + ': ' + tweet.message );
+			 } );*/
+
+			_.forEach( tweetCallback, function ( callback ) { callback( displayedTweets ); } );
+		}
+
+		function tweet ( msg ) {
+			// writeTweet( msg ); // Bug: does not timestamp the message.
+			var newTweet = {};
+			newTweet.user = visitor;
+			newTweet.message = msg;
+			newTweet.created_at = new Date();
+			streams.users[ visitor ].push( newTweet );
+			streams.home.push( newTweet );
+
+		}
+
+		/*** Public API ***/
+		this.start = start;
+		this.stop = stop;
+		this.tweet = tweet;
+		this.follow = follow;
+		this.unFollow = unFollow;
+		this.getUsers = getUsers;
+		this.setUser = setUser;
+		this.getFollowedUsers = getFollowedUsers;
 	}
-
-	function signOut () {
-		visitor = null;
-
-	}
-
-	this.username = createAcct( username, password );
-	this.isSignedIn = isSignedIn;
-	this.signIn = signIn;
-	this.signOut = signOut;
-
 }
 
-Client.prototype = {
-	deleteAcct:function () {
-		this.signOut();
-		window.localStorage.clear( 'username' );
-		window.localStorage.clear( 'passowrd' );
-	}
-}
+$( function () {
+	app = new TwittlerApp();
+	app.start();
 
-/* twittleViewer.js
- ** This file handles the rendering of the HTML
- */
-$( document ).ready( function () {
-	var $body = $( 'body' );
-	$body.html( '' );
-	//twittler();
-	var index = streams.home.length - 1;
-	while ( index >= 0 ) {
-		var tweet = streams.home[index];
-		var $tweet = $( '<div></div>' );
-		$tweet.text( '@' + tweet.user + ': ' + tweet.message );
-		$tweet.appendTo( $body );
-		index -= 1;
-	}
+	/* Set user event handler */
+	$( '[name="username"]' ).on( 'keypress', function ( event ) {
+		if ( (event.keyCode) === 13 ) {
+			if ( $( this ).val().length > 1 ) {
+				app.setUser( $( this ).val().toLowerCase() );
+				$( '[name="tweet"]' ).prop( 'disabled', false ).attr( 'placeholder',
+				                                                      'Hi ' + $( this ).val().toLowerCase() +
+				                                                      '. Say something clever here...' );
+				$( this ).blur();
+				$( this ).attr( 'placeholder', $( this ).val().toLowerCase() );
+				$( this ).val( '' );
+			}
+		}
+	} );
+
+	$( '[name="tweet"]' ).on( 'keypress', function ( event ) {
+		if ( (event.keyCode) === 13 ) {
+			app.tweet( $( this ).val() );
+			$( this ).blur();
+			$( this ).val( '' );
+		}
+	} );
+
+	/* Follow/UnFollow click event handler */
+	$( 'ul' ).on( 'click', 'i', function ( event ) {
+		if ( event.target.tagName === 'I' ) {
+			if ( $( this ).hasClass( 'icon-thumbs-down' ) ) {
+				app.follow( $( event.target ).parent()[0].textContent.trim() );
+				$( this ).removeClass( 'icon-thumbs-down' ).addClass( 'icon-thumbs-up' );
+			} else {
+				app.unFollow( $( event.target ).parent()[0].textContent.trim() );
+				$( this ).removeClass( 'icon-thumbs-up' ).addClass( 'icon-thumbs-down' );
+			}
+		}
+
+	} );
+
+	$( 'ul.tweet-template' ).on( 'scroll', function ( event ) {
+		console.log( 'scrolling' );
+	} );
 } );

@@ -1,0 +1,34 @@
+li {
+    list-style: none;
+}
+
+.icon-right-hand {
+    display: inline-block;
+}
+
+li.tweet-line {
+    height: 15px;
+}
+
+span.tweet-time {
+    text-overflow: clip;
+    font-size: 0.85em;
+}
+
+span.tweet-user {
+    font-family: "Arial Black";
+}
+
+span.tweet-message {
+    font-family: Garamond;
+}
+
+
+.border {
+    border: 1px solid black;
+}
+
+ul.tweet-template {
+    height: 600px;
+    overflow: scroll;
+}

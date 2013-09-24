@@ -1,21 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="en-us">
 <head>
     <title>Twittler</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap Styling-->
+    <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
+    <link href="css/style.css" rel="stylesheet">
+    <!-- Scripts -->
     <script src="js/jquery.js"></script>
     <script src="js/underscore.js"></script>
+    <script src="js/handlebars.js"></script>
     <script src="js/data_generator.js"></script>
+    <script type="text/javascript" src="js/twittler.js"></script>
 </head>
 <body>
 
+<div class="container border">
 
-<script type="text/javascript" src="js/twittler.js"></script>
-<script>
-    var user = new Client('Bob');
-    user.signIn('hello');
-    tw = twittler(visitor);
-    tw.follow('shawndrost');
-    tw.follow('mracus');
-</script>
+    <h1 class="text-center">Twittler Application</h1>
+
+    <div class="row">
+        <div class="span3">
+            <div class="input-prepend">
+                <span class="add-on">@</span>
+                <input type="text" name="username" class="input-medium"
+                       placeholder="username">
+            </div>
+        </div>
+        <div class="span9">
+            <input type="text" name="tweet" class="input-xxlarge"
+                   placeholder="Type in a username before tweeting" disabled>
+        </div>
+    </div>
+
+
+    <div class="row">
+        <div class="span3">
+            <span class="message-template">{{text}}</span>
+            <ul class="users-template">
+                {{#each this}}
+                <li class="user-name">
+                    {{#if isFollowed}}<i class="icon-thumbs-up user-followed-icon"></i>
+                    {{else}}<i class="icon-thumbs-down user-followed-icon"></i>
+                    {{/if}}
+                    {{user}}
+                </li>
+                {{/each}}
+            </ul>
+        </div>
+        <div class="span9">
+            <ul class="tweet-template">
+                {{#each this }}
+                <li class="tweet-line">
+                    <div class="row">
+                        <div class="span5">
+                            @<span class="tweet-user">{{user}}: </span>
+                            <span class="tweet-message">{{message }}</span>
+                        </div>
+                        <div class="span3">
+                            <span class="tweet-time">{{pretty_date}}</span>
+                        </div>
+                    </div>
+                </li>
+                {{/each }}
+            </ul>
+        </div>
+        <!-- Le Bootstrap JavaScript -->
+        <script src="js/bootstrap.min.js"></script>
+
+    </div>
+</div>
 </body>
 </html>
